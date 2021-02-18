@@ -3,6 +3,8 @@ title: "Cetaceans"
 author: "Julianna Renzi"
 date: "2/17/2021"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -13,5 +15,83 @@ library(raster)
 library(sf)
 library(fasterize) # use sf geometries and rasterize them efficiently
 library(rgdal)
+library(rnaturalearth) # get coastline of California
+library(rnaturalearthdata)
+library(rgeos)
+library(ggsn)
+```
+
+## Read in the data
+
+Read in raster data on California cetaceans, taken from AquaMaps (Kaschner, K., Rius-Barile, J., Kesner-Reyes, K., Garilao, C., Kullander, S., Rees, T., & Froese, R. (2016). AquaMaps: Predicted range maps for aquatic species. www.aquamaps.org). The data cover 35 cetacean species and the probability of seeing each species at a given location given environmental factors such as depth, temperature, salinity, and proximity to shore.
+
+```{r}
+# get the names of rasters for each species
+cet_tifs <- list.files(path = here("data", "ca_cetaceans"), pattern = ".tif", full.names = TRUE)
+
+# bring rasters in as a raster stack
+cet_stack <- raster::stack(cet_tifs)
+
+# can view the object to make sure it looks correct:
+cet_stack # looks good
+
+# plot one to get an idea of what the data look like
+plot(cet_stack$Balaenoptera_acutorostrata, col = hcl.colors(n = 100))
+plot(cet_stack$Globicephala_macrorhynchus, col = hcl.colors(n = 100))
+plot(cet_stack$Kogia_sima, col = hcl.colors(n = 100))
+```
+
+## Turn the data into presence/absence using raster algebra
+
+For the purposes of this exercise, we'll define a species as likely to be "present" when the probability of observing it is greater than 0.75. 
+
+```{r}
+convert_pa <- function(x) {
+  ifelse(x > 0.75, 1, 0)
+}
+
+cet_presence <- calc(cet_stack, function(x){convert_pa(x)})
+
+# plot to check and make sure it worked
+plot(cet_presence$Balaenoptera_acutorostrata, col = hcl.colors(n = 2))
+plot(cet_presence$Globicephala_macrorhynchus, col = hcl.colors(n = 2))
+plot(cet_presence$Kogia_sima, col = hcl.colors(n = 2))
+# all look reasonable given the raw maps above
+```
+## Calculate and plot potential species richness
+
+```{r}
+cet_sum <- calc(cet_presence, sum) # get the sum of 1's (presence as we defined it) for the number of potential species in a grid cell
+
+# can see what the summary looks like
+plot(cet_sum, col = hcl.colors(n = 20))
+
+# get it into data.frame format for ggplot
+cet_df <- raster::rasterToPoints(cet_sum) %>% # this is WGS84
+  as.data.frame()
+
+# get coastline data for reference
+coasts <- ne_coastline(scale = "medium", returnclass = "sf")
+
+# can visualize 
+plot(coasts) # this is WGS84
+
+# plot with ggplot()
+ggplot(data = coasts) +
+  geom_sf() +
+  coord_sf(xlim = c(-125, -113), ylim = c(28, 38), expand = FALSE) +
+  annotate(geom = "text", x = -121, y = 30, label = "Pacific Ocean", 
+     fontface = "italic", color = "grey22", size = 3) +
+  annotate(geom = "text", x = -118, y = 36, label = "California", 
+           color = "grey22", size = 3) +
+  geom_raster(data = cet_df, aes(x = x, y = y, fill = layer), alpha = 0.75) +
+  scale_fill_gradient(low = "lightblue", high = "darkred",
+                           breaks=seq(from = 1, to = 25, by = 2)) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(), 
+     axis.title.y = element_blank(), 
+     panel.border = element_rect(fill = NA)) +
+  labs(fill = "Species richness",
+       caption = expression(atop("Map of predicted cetacean species richness in the California Bight where a prediction", "probability of 0.75 was considered a presence and below that was an absence")))
 ```
 
