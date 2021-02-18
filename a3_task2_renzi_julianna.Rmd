@@ -7,7 +7,11 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-require(tidyverse)
-require(here)
+library(tidyverse)
+library(here)
+library(raster)
+library(sf)
+library(fasterize) # use sf geometries and rasterize them efficiently
+library(rgdal)
 ```
 
